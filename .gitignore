@@ -31,3 +31,14 @@
 # Debug files
 *.dSYM/
 *.su
+
+#autotools stuff and Linux swap files
+Makefile.in
+aclocal.m4
+autom4te.cache/
+build-aux/
+config.in
+configure
+*~
+*.*~
+
