@@ -1,7 +1,7 @@
 ## Process this file with autoconf to produce a configure script.
 # @copyright:	Copyright (C) 2017 Kuhrman Technology Solutions LLC.
 #
-# This file is part of bzend.
+# This file is part bzend.
 #
 # @license:	GPLv3+: GNU GPL version 3
 #

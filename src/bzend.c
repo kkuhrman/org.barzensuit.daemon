@@ -26,21 +26,23 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#include "bzenthread.h"
 #include "bzend.h"
+#include "bzendlog.h"
+#include "bzendmq.h"
 
 int main (int argc, char *argv[])
 {
-  FILE* flog = NULL;
   pid_t process_id = 0;
   pid_t sid = 0;
-
-  /* @todo: libzenc logging facilities. */
-  flog = fopen ("bzend.log", "w+");
-  if (flog == NULL)
-    {
-      fprintf(stderr, "\n\tFailed to start bzend. Could not open logging.\n");
-      goto LOG_FAIL;
-    }
+  pthread_t mq_thread;
+  int thread_status;
+  bzen_mqopt_t mqopt = {
+    BZEND_MQ_DEFAULT_SBUF_SIZE, 
+    BZEND_MQ_DEFAULT_QUEUE_LENGTH, 
+    BZEND_MQ_DEFAULT_PORT};
+  int exit_code;
+  int* result = &exit_code;
 
   /* Create child process */
   process_id = fork();
@@ -48,7 +50,8 @@ int main (int argc, char *argv[])
   /* Exit with fail code if fork() fails  */
   if (process_id < 0)
     {
-      fprintf(flog, "Failed to start bzend. fork() returned %d", process_id);
+      /* @todo: error logging*/
+      exit_code = -1;
       goto DAEMON_FAIL;
     }
 
@@ -65,7 +68,8 @@ int main (int argc, char *argv[])
   sid = setsid();
   if(sid < 0)
     {
-      fprintf(flog, "Failed to start bzend. setsid() returned %d", sid);
+      /* @todo: error logging */
+      exit_code = -1;
       goto DAEMON_FAIL;
     }
 
@@ -77,18 +81,30 @@ int main (int argc, char *argv[])
   close(STDOUT_FILENO);
   close(STDERR_FILENO);
 
-  fprintf(flog, "\n\tStarting bzend... process id is %d.\n", process_id);
-  do
+  /* @todo: if this cannot be option it must come from /etc/conf. */
+  bzend_log_severity_level_set(BZENLOG_ERROR);
+
+  /* Open message queue for processing. */
+  thread_status = bzen_thread_create(&mq_thread, NULL, bzend_mq_listen, &mqopt);
+  if (thread_status != 0)
     {
-      sleep(1);
-      /* @todo: */
-    } while(1);
+      /* @todo: error logging */
+      exit_code = -1;
+      goto DAEMON_FAIL;
+    }
+
+  thread_status = bzen_thread_join(mq_thread, (void**) &result);
+  if (thread_status != 0)
+    {
+      /* @todo: error logging */
+      exit_code = -1;
+      goto DAEMON_FAIL;
+    }
+
+  /* Shutdown the log service. */
+  bzend_log_shutdown();
 
  DAEMON_FAIL:
-  fflush(flog);
-  fclose(flog);
 
- LOG_FAIL:
-
-  return (0);
+  return exit_code;
 }

@@ -21,7 +21,7 @@
 # @author:	Karl Kuhrman
 #
 
-AM_CFLAGS = $(WARN_CFLAGS) $(WERROR_CFLAGS) $(CFLAG_VISIBILITY)
+AM_CFLAGS = $(WARN_CFLAGS) $(WERROR_CFLAGS) $(CFLAG_VISIBILITY) -pthread
 
 # Add source file sub-directories to compiler search path
 AM_CPPFLAGS = \
@@ -33,7 +33,11 @@ AM_CPPFLAGS = \
 bin_PROGRAMS = bzend
 bzend_SOURCES = \
 	bzend.c \
-	bzend.h 
+	bzend.h \
+	bzendlog.c \
+	bzendlog.h \
+	bzendmq.c \
+	bzendmq.h
 
 # Link to gnulib & libbzenc
 bzend_LDADD = @BZENC_LIB@

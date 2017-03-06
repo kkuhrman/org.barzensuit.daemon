@@ -26,7 +26,7 @@ libdir=@libdir@
 includedir=@includedir@
 
 Name: bzend
-Description: Project Barzensuit Service Daemon
+Description: Project Barzensuit Services Interprocess Communications Daemon
 URL: https://www.barzensuit.org
 Version: @VERSION@
 Cflags: -I${includedir}
