@@ -43,6 +43,7 @@ int main (int argc, char *argv[])
     BZEND_MQ_DEFAULT_PORT};
   int exit_code;
   int* result = &exit_code;
+  int status;
 
   /* Create child process */
   process_id = fork();
@@ -82,13 +83,16 @@ int main (int argc, char *argv[])
   close(STDERR_FILENO);
 
   /* @todo: if this cannot be option it must come from /etc/conf. */
-  bzend_log_severity_level_set(BZENLOG_ERROR);
+  bzend_log_severity_level_set(BZENLOG_DEBUG);
 
   /* Open message queue for processing. */
   thread_status = bzen_thread_create(&mq_thread, NULL, bzend_mq_listen, &mqopt);
   if (thread_status != 0)
     {
-      /* @todo: error logging */
+      /* Log error. */
+      status = bzen_log_write_stat(BZEND_LOG_ERRORS, 
+				   BZENLOG_ERROR,
+				   "Failed to create mq thread.");
       exit_code = -1;
       goto DAEMON_FAIL;
     }
@@ -96,7 +100,10 @@ int main (int argc, char *argv[])
   thread_status = bzen_thread_join(mq_thread, (void**) &result);
   if (thread_status != 0)
     {
-      /* @todo: error logging */
+      /* Log error. */
+      status = bzen_log_write_stat(BZEND_LOG_ERRORS, 
+				   BZENLOG_ERROR,
+				   "Failed to join mq thread.");
       exit_code = -1;
       goto DAEMON_FAIL;
     }

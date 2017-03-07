@@ -23,6 +23,7 @@
 #include <pthread.h>
 #include <stdio.h>
 #include "bzensock.h"
+#include "bzendlog.h"
 #include "bzendmq.h"
 
 const size_t MQ_BUFFER_SIZE = 1028;
@@ -42,6 +43,7 @@ void* bzend_mq_listen(void* arg)
   size_t client_address_size;
   int connection_fd;
   int new_connection_fd;
+  char msgbuf[BZEND_MAX_MESSAGE_SIZE];
   int status;
 
   /* @todo: type safety error handling */
@@ -55,9 +57,16 @@ void* bzend_mq_listen(void* arg)
   server_socket_fd = bzen_socket_open(PF_INET, SOCK_STREAM, 0);
   if (server_socket_fd < 0)
     {
-      /* @todo: error logging. */
+      /* Log error. */
+      status = bzen_log_write_stat(BZEND_LOG_ERRORS, 
+				   BZENLOG_ERROR,
+				   "Failed to open TCP socket for mq.");
       goto MQ_LISTEN_FAIL;
     }
+
+  status = bzen_log_write_stat(BZEND_LOG_STATUS, 
+			       BZENLOG_STATUS,
+			       "Opening TCP connection for mq...");
 
   /* bind server socket to address */
   status = bzen_socket_bind(server_socket_fd, 
@@ -65,7 +74,14 @@ void* bzend_mq_listen(void* arg)
 			    server_address_size);
   if (status < 0)
     {
-      /* @todo: error logging. */
+      /* Log error. */
+      snprintf(msgbuf, 
+	       BZEND_MAX_MESSAGE_SIZE, 
+	       "Failed to bind mq socket to inet address on port %d", 
+	       mqopt->port);
+      status = bzen_log_write_stat(BZEND_LOG_ERRORS, 
+				   BZENLOG_ERROR,
+				   msgbuf);
       goto MQ_LISTEN_FAIL;
     }
 
@@ -73,9 +89,22 @@ void* bzend_mq_listen(void* arg)
   status = bzen_socket_listen(server_socket_fd, mqopt->queue_length);
   if (status < 0)
     {
-      /* @todo: error logging. */
+      /* Log error. */
+      snprintf(msgbuf, 
+	       BZEND_MAX_MESSAGE_SIZE, 
+	       "Failed to set  mq socket into listening state. \
+listen() returned %d. queue length: %d", 
+	       status,
+	       mqopt->queue_length);
+      status = bzen_log_write_stat(BZEND_LOG_ERRORS, 
+				   BZENLOG_ERROR,
+				   msgbuf);
       goto MQ_LISTEN_FAIL;
     }
+
+  status = bzen_log_write_stat(BZEND_LOG_STATUS, 
+			       BZENLOG_STATUS,
+			       "bzend mq TCP socket is listening.");
 
   /* Initialize the set of active sockets. */
   FD_ZERO (&active_fd_set);
@@ -95,7 +124,15 @@ void* bzend_mq_listen(void* arg)
       status = select(FD_SETSIZE, &read_fd_set, NULL, NULL, NULL);
       if (status < 0)
 	{
-	  /* @todo: error logging. */ 
+	  /* Log error. */
+	  snprintf(msgbuf, 
+		   BZEND_MAX_MESSAGE_SIZE, 
+		   "select() returned %d on connection %d.", 
+		   status,
+		   read_fd_set);
+	  status = bzen_log_write_stat(BZEND_LOG_ERRORS, 
+				       BZENLOG_ERROR,
+				       msgbuf);
 	  goto MQ_LISTEN_FAIL;
 	}
 
@@ -113,10 +150,24 @@ void* bzend_mq_listen(void* arg)
 					     &client_address_size);
 		  if (new_connection_fd < 0)
 		    {
-		      /* @todo: log error but we continue serving */
+		      /* Log error. */
+		      snprintf(msgbuf, 
+			       BZEND_MAX_MESSAGE_SIZE, 
+			       "Failed to accept connection request from %s.", 
+			       client_address.sin_addr);
+		      status = bzen_log_write_stat(BZEND_LOG_ERRORS, 
+						   BZENLOG_ERROR,
+						   msgbuf);
 		    }
 
-		  /* @todo: log new connection */
+		  /* Log new connection */
+		  snprintf(msgbuf, 
+			   BZEND_MAX_MESSAGE_SIZE, 
+			   "Accepted connection request from %s.", 
+			   client_address.sin_addr);
+		  status = bzen_log_write_stat(BZEND_LOG_STATUS, 
+					       BZENLOG_STATUS,
+					       msgbuf);
 
 		  /* Add new connection to current set. */
 		  FD_SET(new_connection_fd, &active_fd_set);
@@ -128,6 +179,13 @@ void* bzend_mq_listen(void* arg)
 		  if (status < 0)
 		    {
 		      /* @todo: log error but we continue serving */
+		      snprintf(msgbuf, 
+			       BZEND_MAX_MESSAGE_SIZE, 
+			       "Failed to receive from connection %d.", 
+			       connection_fd);
+		      status = bzen_log_write_stat(BZEND_LOG_ERRORS, 
+						   BZENLOG_ERROR,
+						   msgbuf);
 		    }
 		}
 	    }
@@ -135,6 +193,10 @@ void* bzend_mq_listen(void* arg)
     }
 
  MQ_LISTEN_FAIL:
+
+  status = bzen_log_write_stat(BZEND_LOG_ERRORS, 
+			       BZENLOG_ERROR,
+			       "Clsoing TCP connection for mq...");
 
   /* Close the sockets. */
   status = bzen_socket_close(server_socket_fd, SHUT_RDWR);
@@ -146,10 +208,12 @@ void* bzend_mq_listen(void* arg)
 int bzend_mq_recv(bzen_cbuflock_t* cbuflock, int client_fd)
 {
   char tempbuf[MQ_BUFFER_SIZE];
+  char msgbuf[BZEND_MAX_MESSAGE_SIZE];
   char char_in;
   char char_out;
   int nbytes;
   int nchar;
+  int status;
   int result;
 
   /* @todo: once we read data from socket, it's gone. we need to peek at
@@ -170,8 +234,14 @@ int bzend_mq_recv(bzen_cbuflock_t* cbuflock, int client_fd)
 	{
 	  if (nchar < nbytes)
 	    {
-	      /* Indicates a write error. */
-	      /* @todo: error logging. */
+	      /* Indicates a write to buffer error. */
+	      snprintf(msgbuf, 
+		       BZEND_MAX_MESSAGE_SIZE, 
+		       "Error receiving data from mq connection %d. Buffer write error.", 
+		       client_fd);
+	      status = bzen_log_write_stat(BZEND_LOG_ERRORS, 
+					   BZENLOG_ERROR,
+					   msgbuf);
 	      result = -1;
 	      goto RECV_FAIL;
 	    }
